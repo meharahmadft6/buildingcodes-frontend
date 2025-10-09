@@ -1,6 +1,10 @@
 // src/pages/index.tsx
-import BuildingCodeViewer from "@/components/BuildingCodeViewer";
+import LibraryHome from "@/components/LibraryHome";
 
 export default function Home() {
-  return <BuildingCodeViewer />;
+  return (
+    <>
+      <LibraryHome />
+    </>
+  );
 }

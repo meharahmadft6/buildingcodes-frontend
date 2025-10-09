@@ -1,4 +1,3 @@
-// src/components/BuildingCodeViewer.tsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   ChevronRight,
@@ -14,22 +13,8 @@ import {
   buildingCodeService,
   buildHierarchy,
 } from "@/services/buildingCodeService";
-import { libraryService } from "@/services/libraryService";
 
-interface BuildingCodeViewerProps {
-  documentId?: string;
-  documentInfo?: {
-    title: string;
-    year: number;
-    version?: string;
-    jurisdiction_name: string;
-  };
-}
-import Header from "./Header";
-const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
-  documentId,
-  documentInfo,
-}) => {
+const BuildingCodeViewer: React.FC = () => {
   const [data, setData] = useState<HierarchyNode[]>([]);
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -43,26 +28,13 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
 
   useEffect(() => {
     fetchData();
-  }, [documentId]);
+  }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-
-      let flatData: BuildingCodeItem[];
-
-      if (documentId) {
-        // Fetch content for specific document
-        const contentData = await libraryService.getPdfDocumentContent(
-          documentId
-        );
-        flatData = contentData.content;
-      } else {
-        // Fallback to original behavior (all content)
-        flatData = await buildingCodeService.getHierarchy();
-      }
-
+      const flatData = await buildingCodeService.getHierarchy();
       const hierarchicalData = buildHierarchy(flatData);
       setData(hierarchicalData);
 
@@ -80,7 +52,7 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       setExpandedItems(allIds);
     } catch (err) {
       setError(
-        "Failed to load building code data. Please ensure the backend server is running."
+        "Failed to load building code data. Please ensure the backend server is running on port 8080."
       );
       console.error("Error fetching data:", err);
     } finally {
@@ -189,7 +161,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       </>
     );
   };
-
   const getTypeStyles = (type: string) => {
     const styles: Record<string, { text: string }> = {
       division: {
@@ -223,7 +194,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       }
     );
   };
-
   // Filter navigation to only show division to articles
   const shouldShowInNavigation = (item: HierarchyNode): boolean => {
     const topLevelTypes = [
@@ -297,6 +267,13 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
         )}
       </div>
     );
+  };
+
+  const formatClauseContent = (contentType: string, contentText: string) => {
+    if (!contentText) return contentText;
+
+    // For clauses and subclauses, use the content_text as is (it already contains the formatted text)
+    return contentText;
   };
 
   const renderContentItem = (item: HierarchyNode, level: number = 0) => {
@@ -574,171 +551,158 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
 
   if (error) {
     return (
-      <>
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-          <div className="max-w-md text-center">
-            <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Connection Error
-            </h2>
-            <p className="text-gray-600 mb-6">{error}</p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={fetchData}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <RefreshCw size={16} />
-                Try Again
-              </button>
-            </div>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Connection Error
+          </h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={fetchData}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw size={16} />
+              Try Again
+            </button>
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-          <div className="max-w-[1800px] mx-auto px-8 py-4">
-            <div className="flex items-center justify-between gap-6">
-              {/* Left side - Document info */}
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-3 rounded-xl shadow-lg flex-shrink-0">
-                  <Building size={28} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate">
-                    {documentInfo?.title ||
-                      "British Columbia Building Code 2024"}
-                  </h1>
-                  <p className="text-sm text-gray-600 mt-1 truncate">
-                    {documentInfo?.jurisdiction_name &&
-                      `${documentInfo.jurisdiction_name} • `}
-                    {documentInfo?.year || "2024"}
-                    {documentInfo?.version &&
-                      ` • Version ${documentInfo.version}`}
-                  </p>
-                </div>
+    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+        <div className="max-w-[1800px] mx-auto px-8 py-5">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-3 rounded-xl shadow-lg">
+                <Building size={28} />
               </div>
-
-              {/* Right side - Search bar */}
-              <div className="flex-1 max-w-2xl">
-                <div className="relative">
-                  <Search
-                    className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    size={20}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Search by title, content, or reference code..."
-                    className="w-full pl-12 pr-12 py-3 border text-black border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white shadow-sm transition-all"
-                    value={searchTerm}
-                    onChange={(e) => handleSearch(e.target.value)}
-                    onFocus={() =>
-                      searchResults.length > 0 && setShowSearchDropdown(true)
-                    }
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => {
-                        setSearchTerm("");
-                        setSearchResults([]);
-                        setShowSearchDropdown(false);
-                      }}
-                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <X size={18} />
-                    </button>
-                  )}
-
-                  {/* Search Dropdown */}
-                  {showSearchDropdown && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-96 overflow-y-auto z-50">
-                      <div className="p-3">
-                        <div className="text-xs font-medium text-gray-500 px-3 py-2 mb-1 bg-gray-50 rounded-lg">
-                          {searchResults.length} results found
-                        </div>
-                        {searchResults.map((result) => (
-                          <div
-                            key={result.id}
-                            className="px-4 py-3 hover:bg-blue-50 cursor-pointer rounded-lg transition-colors mb-1"
-                            onClick={() => navigateToItem(result.id)}
-                          >
-                            <div className="flex items-start gap-3">
-                              {result.reference_code && (
-                                <span className="font-mono text-xs text-blue-600 font-semibold flex-shrink-0 bg-blue-50 px-2 py-1 rounded">
-                                  {result.reference_code}
-                                </span>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 line-clamp-1">
-                                  {highlightText(
-                                    result.title || result.content_text || "",
-                                    searchTerm
-                                  )}
-                                </div>
-                                {result.content_text &&
-                                  result.content_text !== result.title && (
-                                    <div className="text-xs text-gray-600 line-clamp-2 mt-1">
-                                      {highlightText(
-                                        result.content_text.substring(0, 100) +
-                                          "...",
-                                        searchTerm
-                                      )}
-                                    </div>
-                                  )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+                  British Columbia Building Code 2024
+                </h1>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  Division A Compliance, Objectives and Functional Statements
+                </p>
               </div>
             </div>
           </div>
-        </header>
 
-        {/* Two Column Layout */}
-        <div className="flex-1 flex overflow-hidden max-w-[1800px] mx-auto w-full px-6 py-6 gap-6">
-          {/* Left Navigation Sidebar */}
-          <aside className="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex-shrink-0">
-            <div className="bg-gradient-to-r from-gray-50 to-white px-5 py-4 border-b border-gray-200">
-              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
-                Navigation
-              </h2>
-            </div>
-            <div className="overflow-y-auto h-full p-2">
-              {data.map((item) => renderNavigationItem(item))}
-            </div>
-          </aside>
+          {/* Search Bar */}
+          <div className="relative max-w-2xl">
+            <Search
+              className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
+              size={20}
+            />
+            <input
+              type="text"
+              placeholder="Search by title, content, or reference code..."
+              className="w-full pl-12 pr-12 py-3 border text-black border-gray-400 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white shadow-sm transition-all"
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              onFocus={() =>
+                searchResults.length > 0 && setShowSearchDropdown(true)
+              }
+            />
+            {searchTerm && (
+              <button
+                onClick={() => {
+                  setSearchTerm("");
+                  setSearchResults([]);
+                  setShowSearchDropdown(false);
+                }}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            )}
 
-          {/* Right Content Area */}
-          <main className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="h-full overflow-y-auto">
-              <div className="max-w-4xl px-8 py-6">
-                {data.length === 0 ? (
-                  <div className="text-center py-16">
-                    <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Building size={32} className="text-gray-400" />
-                    </div>
-                    <p className="text-gray-500 text-lg">
-                      No building code data available.
-                    </p>
+            {/* Search Dropdown */}
+            {showSearchDropdown && searchResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-96 overflow-y-auto z-50">
+                <div className="p-3">
+                  <div className="text-xs font-medium text-gray-500 px-3 py-2 mb-1 bg-gray-50 rounded-lg">
+                    {searchResults.length} results found
                   </div>
-                ) : (
-                  <div>{data.map((item) => renderContentItem(item))}</div>
-                )}
+                  {searchResults.map((result) => (
+                    <div
+                      key={result.id}
+                      className="px-4 py-3 hover:bg-blue-50 cursor-pointer rounded-lg transition-colors mb-1"
+                      onClick={() => navigateToItem(result.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        {result.reference_code && (
+                          <span className="font-mono text-xs text-blue-600 font-semibold flex-shrink-0 bg-blue-50 px-2 py-1 rounded">
+                            {result.reference_code}
+                          </span>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 line-clamp-1">
+                            {highlightText(
+                              result.title || result.content_text || "",
+                              searchTerm
+                            )}
+                          </div>
+                          {result.content_text &&
+                            result.content_text !== result.title && (
+                              <div className="text-xs text-gray-600 line-clamp-2 mt-1">
+                                {highlightText(
+                                  result.content_text.substring(0, 100) + "...",
+                                  searchTerm
+                                )}
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </main>
+            )}
+          </div>
         </div>
+      </header>
+
+      {/* Two Column Layout */}
+      <div className="flex-1 flex overflow-hidden max-w-[1800px] mx-auto w-full px-6 py-6 gap-6">
+        {/* Left Navigation Sidebar */}
+        <aside className="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex-shrink-0">
+          <div className="bg-gradient-to-r from-gray-50 to-white px-5 py-4 border-b border-gray-200">
+            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+              Navigation
+            </h2>
+          </div>
+          <div className="overflow-y-auto h-full p-2">
+            {data.map((item) => renderNavigationItem(item))}
+          </div>
+        </aside>
+
+        {/* Right Content Area */}
+        <main className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="h-full overflow-y-auto">
+            <div className="max-w-4xl px-8 py-6">
+              {data.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Building size={32} className="text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 text-lg">
+                    No building code data available.
+                  </p>
+                </div>
+              ) : (
+                <div>{data.map((item) => renderContentItem(item))}</div>
+              )}
+            </div>
+          </div>
+        </main>
       </div>
-    </>
+    </div>
   );
 };
 
