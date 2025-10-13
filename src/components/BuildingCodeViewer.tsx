@@ -706,7 +706,7 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
         {/* Two Column Layout */}
         <div className="flex-1 flex overflow-hidden max-w-[1800px] mx-auto w-full px-6 py-6 gap-6">
           {/* Left Navigation Sidebar */}
-          <aside className="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex-shrink-0">
+          <aside className="max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex-shrink-0">
             <div className="bg-gradient-to-r from-gray-50 to-white px-5 py-4 border-b border-gray-200">
               <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
                 Navigation
