@@ -49,6 +49,24 @@ class ApiService {
       `${API_BASE_URL}/pdf-documents/${id}/content`
     );
   }
+  async searchContent(
+    query: string,
+    documentId?: string,
+    page: number = 1,
+    limit: number = 10
+  ) {
+    const params = new URLSearchParams({
+      q: query,
+      page: page.toString(),
+      limit: limit.toString(),
+    });
+
+    if (documentId) {
+      params.append("documentId", documentId);
+    }
+
+    return this.fetchWithErrorHandling(`${API_BASE_URL}/search?${params}`);
+  }
 }
 
 export const libraryService = new ApiService();

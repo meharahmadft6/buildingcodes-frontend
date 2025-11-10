@@ -5,6 +5,7 @@ import {
   User,
   Building,
   Filter,
+  Loader2,
   FileText,
   Globe,
   Type,
@@ -32,6 +33,44 @@ interface Language {
   name: string;
 }
 
+interface GroupedSearchResult {
+  documentId: string;
+  documentTitle: string;
+  jurisdictionName: string;
+  documentTypeName: string;
+  year: number;
+  items: SearchResult[];
+}
+
+interface SearchResult {
+  id: number;
+  parent_id: number | null;
+  content_type: string;
+  page_number: number;
+  reference_code: string;
+  title: string;
+  content_text: string;
+  sequence_order: number;
+  pdf_document_id: string;
+  font_family: string;
+  font_size: number;
+  bbox: number[];
+  y_coordinate: number;
+  document_title: string;
+  jurisdiction_name: string;
+  document_type_name: string;
+  year: number;
+}
+
+interface SearchResponse {
+  results: SearchResult[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 interface PdfDocument {
   id: string;
   title: string;
@@ -52,6 +91,16 @@ const LibraryHome: React.FC = () => {
   const [languages, setLanguages] = useState<Language[]>([]);
   const [pdfDocuments, setPdfDocuments] = useState<PdfDocument[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<PdfDocument[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [searchPagination, setSearchPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+  });
+  const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
   const [selectedJurisdiction, setSelectedJurisdiction] =
     useState<string>("all");
@@ -199,6 +248,226 @@ const LibraryHome: React.FC = () => {
     return colors[type] || "bg-gray-100 text-gray-800";
   };
 
+  const groupSearchResultsByArticle = (
+    results: SearchResult[]
+  ): GroupedSearchResult[] => {
+    const grouped: { [key: string]: GroupedSearchResult } = {};
+
+    results.forEach((result) => {
+      // Group by document first
+      const docKey = result.pdf_document_id;
+
+      if (!grouped[docKey]) {
+        grouped[docKey] = {
+          documentId: result.pdf_document_id,
+          documentTitle: result.document_title,
+          jurisdictionName: result.jurisdiction_name,
+          documentTypeName: result.document_type_name,
+          year: result.year,
+          items: [],
+        };
+      }
+
+      grouped[docKey].items.push(result);
+    });
+
+    // Sort items within each group to prioritize articles and their children
+    Object.values(grouped).forEach((group) => {
+      group.items.sort((a, b) => {
+        // Sort by sequence order to maintain hierarchy
+        return a.sequence_order - b.sequence_order;
+      });
+    });
+
+    return Object.values(grouped);
+  };
+
+  // Helper function to get article and its children
+  const getArticleWithChildren = (items: SearchResult[]) => {
+    const articles: { [key: string]: SearchResult[] } = {};
+
+    items.forEach((item) => {
+      if (item.content_type === "article") {
+        articles[item.id] = [item];
+      }
+    });
+
+    // Add children to their parent articles
+    items.forEach((item) => {
+      if (item.content_type !== "article" && item.parent_id) {
+        if (articles[item.parent_id]) {
+          articles[item.parent_id].push(item);
+        } else {
+          // If parent not found in current results, create a new group for this item
+          const parentKey = `orphan-${item.parent_id}`;
+          if (!articles[parentKey]) {
+            articles[parentKey] = [];
+          }
+          articles[parentKey].push(item);
+        }
+      }
+    });
+
+    return Object.values(articles);
+  };
+
+  const handleSearch = async (page: number = 1) => {
+    if (!searchQuery.trim()) {
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      const response: SearchResponse = await libraryService.searchContent(
+        searchQuery,
+        undefined, // Search across all documents
+        page,
+        10
+      );
+
+      setSearchResults(response.results);
+      setSearchPagination(response.pagination);
+      setShowSearchResults(true);
+    } catch (error) {
+      console.error("Search error:", error);
+      // You might want to show an error message to the user
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Handle search input key press
+  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  // Handle search button click
+  const handleSearchButtonClick = () => {
+    handleSearch();
+  };
+
+  // Handle pagination
+  const handlePageChange = (newPage: number) => {
+    handleSearch(newPage);
+  };
+
+  // Clear search
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setShowSearchResults(false);
+    setSearchResults([]);
+  };
+
+  // Navigate to document
+  const navigateToDocument = (documentId: string, contentId?: number) => {
+    if (contentId) {
+      window.location.href = `/document/${documentId}?highlight=${contentId}`;
+    } else {
+      window.location.href = `/document/${documentId}`;
+    }
+  };
+
+  // Highlight search terms in text
+  const highlightText = (text: string, highlight: string) => {
+    if (!highlight || !text) return text;
+
+    const parts = text.split(new RegExp(`(${highlight})`, "gi"));
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.toLowerCase() === highlight.toLowerCase() ? (
+            <mark key={i} className="bg-yellow-200 px-0.5 rounded">
+              {part}
+            </mark>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  };
+
+  // Helper function to render hierarchical path
+  const renderHierarchicalPath = (result: SearchResult) => {
+    const hierarchyLevels = [
+      "division",
+      "part",
+      "section",
+      "subsection",
+      "article",
+      "sentence",
+      "clause",
+      "subclause",
+    ];
+
+    const currentLevelIndex = hierarchyLevels.indexOf(
+      result.content_type.toLowerCase()
+    );
+
+    if (currentLevelIndex === -1) return null;
+
+    // Create breadcrumb-like path showing parent hierarchy
+    const pathElements = [];
+
+    // Add parent levels (you might need to fetch this data from your API)
+    // For now, we'll show a simplified version based on content type
+    if (currentLevelIndex > 0) {
+      pathElements.push(
+        <div
+          key="path"
+          className="flex items-center space-x-1 text-xs text-gray-500 mb-2"
+        >
+          <span>
+            In{" "}
+            {hierarchyLevels.slice(0, currentLevelIndex).map((level) => (
+              <span key={level} className="capitalize">
+                {level} →{" "}
+              </span>
+            ))}
+          </span>
+          <span className="font-medium text-black capitalize">
+            {result.content_type}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mb-3">
+        {pathElements}
+
+        {/* Visual hierarchy indicator */}
+        <div className="flex items-center space-x-2 text-xs text-gray-400">
+          <div className="flex items-center space-x-1">
+            {hierarchyLevels
+              .slice(0, currentLevelIndex + 1)
+              .map((level, index) => (
+                <div
+                  key={level}
+                  className={`flex items-center ${
+                    index === currentLevelIndex
+                      ? "text-black font-medium"
+                      : "text-gray-400"
+                  }`}
+                >
+                  {index > 0 && <span className="mx-1">›</span>}
+                  <span className="capitalize">
+                    {level}
+                    {index === currentLevelIndex && (
+                      <span className="ml-1 w-2 h-2 bg-blue-500 rounded-full inline-block"></span>
+                    )}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -212,10 +481,30 @@ const LibraryHome: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-    
-
-      <div className="max-w-8xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className=" py-3  mx-auto">
+          <div className="relative ">
+            <input
+              type="text"
+              placeholder="Search across all documents..."
+              className="w-full pl-4 pr-12 py-3 border border-gray-300 rounded-lg   text-black bg-white"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={handleSearchKeyPress}
+            />
+            <button
+              onClick={handleSearchButtonClick}
+              disabled={isSearching}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-black transition-colors disabled:opacity-50"
+            >
+              {isSearching ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Search className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+        </div>
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Filters Sidebar */}
           <div className="lg:w-1/4">
@@ -362,91 +651,282 @@ const LibraryHome: React.FC = () => {
             </div>
           </div>
           {/* Documents List */}
+
           <div className="lg:w-3/4">
             <div className="bg-white border border-gray-200 rounded-lg">
               <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-black">Documents</h2>
+                <h2 className="text-xl font-semibold text-black">
+                  {showSearchResults ? "Search Results" : "Documents"}
+                </h2>
+                {showSearchResults && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    Found {searchPagination.total} results for "{searchQuery}"
+                    <button
+                      onClick={handleClearSearch}
+                      className="ml-2 text-blue-600 hover:text-blue-800 text-sm"
+                    >
+                      (Clear Search)
+                    </button>
+                  </p>
+                )}
               </div>
 
               <div className="p-6">
-                {filteredDocuments.length === 0 ? (
-                  <div className="text-center py-12">
-                    <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-black mb-2">
-                      No documents found
-                    </h3>
-                    <p className="text-gray-600">
-                      Try adjusting your filters or search terms to find what
-                      you're looking for.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {filteredDocuments.map((document) => (
-                      <div
-                        key={document.id}
-                        className="border border-gray-200 rounded-lg p-6 hover:border-black transition-colors cursor-pointer group"
-                        onClick={() => {
-                          window.location.href = `/document/${document.id}`;
-                        }}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <span
-                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getDocumentTypeColor(
-                                  document.document_type_name
-                                )}`}
+                {showSearchResults ? (
+                  // Show search results when searching
+                  <>
+                    {isSearching ? (
+                      <div className="text-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-black" />
+                        <p className="text-gray-600">Searching documents...</p>
+                      </div>
+                    ) : searchResults.length === 0 ? (
+                      <div className="text-center py-12">
+                        <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-black mb-2">
+                          No search results found
+                        </h3>
+                        <p className="text-gray-600">
+                          No documents found for "{searchQuery}". Try different
+                          keywords or adjust your filters.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-6">
+                          {groupSearchResultsByArticle(searchResults).map(
+                            (group) => (
+                              <div
+                                key={group.documentId}
+                                className=" rounded-lg  transition-colors"
                               >
-                                {document.document_type_name}
-                              </span>
-                              <span className="text-sm text-black font-medium">
-                                {document.jurisdiction_name}
-                              </span>
-                              <span className="text-sm text-gray-600">
-                                {document.year}
-                              </span>
-                            </div>
+                                {/* Article Groups */}
+                                <div className="divide-y divide-gray-100">
+                                  {getArticleWithChildren(group.items).map(
+                                    (articleGroup, index) => {
+                                      const article = articleGroup.find(
+                                        (item) =>
+                                          item.content_type === "article"
+                                      );
+                                      const children = articleGroup.filter(
+                                        (item) =>
+                                          item.content_type !== "article"
+                                      );
 
-                            <h3 className="text-lg font-semibold text-black mb-2 group-hover:text-blue-600 transition-colors">
-                              {document.title}
-                            </h3>
+                                      // If no article found, use the first item as header
+                                      const headerItem =
+                                        article || articleGroup[0];
 
-                            <div className="flex items-center space-x-6 text-sm text-gray-600">
-                              <div className="flex items-center space-x-2">
-                                <BookOpen className="h-4 w-4" />
-                                <span>{document.language_name}</span>
+                                      return (
+                                        <div
+                                          key={headerItem?.id || index}
+                                          className="p-6 hover:bg-gray-50 transition-colors cursor-pointer group"
+                                          onClick={() =>
+                                            navigateToDocument(
+                                              headerItem.pdf_document_id,
+                                              headerItem.id
+                                            )
+                                          }
+                                        >
+                                          {/* Article Header */}
+                                          <div className="flex items-start justify-between mb-3">
+                                            <div className="flex-1 ">
+                                              <div className="flex items-center space-x-2 mb-2  text-blue-500  text-lg font-semibold ">
+                                                {headerItem.reference_code && (
+                                                  <span className="">
+                                                    {headerItem.reference_code}
+                                                  </span>
+                                                )}
+                                                {headerItem.title &&
+                                                  headerItem.title.trim() && (
+                                                    <span className="underline ">
+                                                      {highlightText(
+                                                        headerItem.title,
+                                                        searchQuery
+                                                      )}
+                                                    </span>
+                                                  )}
+                                              </div>
+
+                                              {/* Article Metadata */}
+                                              <div className="flex items-center space-x-4 text-sm">
+                                                <span className="bg-gray-100 text-black px-3 py-1 rounded-lg">
+                                                  {group.year}
+                                                </span>
+
+                                                <span className="bg-gray-100 text-black px-3 py-1 rounded-lg">
+                                                  English
+                                                </span>
+
+                                                <span className="bg-gray-100 text-black px-3 py-1 rounded-lg">
+                                                  {headerItem.document_title}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Children Content (sentences, clauses, etc.) */}
+                                          {children.length > 0 && (
+                                            <div className="mt-4 space-y-3 pl-4 border-l-2 border-gray-200">
+                                              {children.map((child) => (
+                                                <div
+                                                  key={child.id}
+                                                  className="text-gray-700 leading-relaxed"
+                                                >
+                                                  {child.reference_code && (
+                                                    <span className="font-mono text-xs text-gray-500 mr-2">
+                                                      {child.reference_code}
+                                                    </span>
+                                                  )}
+                                                  {highlightText(
+                                                    child.content_text ||
+                                                      child.title,
+                                                    searchQuery
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          {/* Show content text if no children but has content */}
+                                          {!article &&
+                                            headerItem.content_text &&
+                                            headerItem.content_text.trim() && (
+                                              <div className="mt-3 text-gray-700 leading-relaxed">
+                                                {highlightText(
+                                                  headerItem.content_text,
+                                                  searchQuery
+                                                )}
+                                              </div>
+                                            )}
+                                        </div>
+                                      );
+                                    }
+                                  )}
+                                </div>
                               </div>
-                              {document.effective_date && (
-                                <div className="flex items-center space-x-2">
-                                  <span>
-                                    Effective:{" "}
-                                    {formatDate(document.effective_date)}
+                            )
+                          )}
+                        </div>
+
+                        {/* Pagination for search results */}
+                        {searchPagination.totalPages > 1 && (
+                          <div className="flex justify-center items-center space-x-2 mt-6">
+                            <button
+                              onClick={() =>
+                                handlePageChange(searchPagination.page - 1)
+                              }
+                              disabled={searchPagination.page === 1}
+                              className="px-4 py-2 border text-white bg-black rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:border-black transition-colors"
+                            >
+                              Previous
+                            </button>
+
+                            <span className="text-sm text-gray-600">
+                              Page {searchPagination.page} of{" "}
+                              {searchPagination.totalPages}
+                            </span>
+
+                            <button
+                              onClick={() =>
+                                handlePageChange(searchPagination.page + 1)
+                              }
+                              disabled={
+                                searchPagination.page ===
+                                searchPagination.totalPages
+                              }
+                              className="px-4 py-2 border text-white bg-black rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:border-black transition-colors"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  // Show filtered documents when not searching (keep existing code)
+                  <>
+                    {filteredDocuments.length === 0 ? (
+                      <div className="text-center py-12">
+                        <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-black mb-2">
+                          No documents found
+                        </h3>
+                        <p className="text-gray-600">
+                          Try adjusting your filters or search terms to find
+                          what you're looking for.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {filteredDocuments.map((document) => (
+                          <div
+                            key={document.id}
+                            className="border border-gray-200 rounded-lg p-6 hover:border-black transition-colors cursor-pointer group"
+                            onClick={() => {
+                              window.location.href = `/document/${document.id}`;
+                            }}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3 mb-2">
+                                  <span
+                                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getDocumentTypeColor(
+                                      document.document_type_name
+                                    )}`}
+                                  >
+                                    {document.document_type_name}
+                                  </span>
+                                  <span className="text-sm text-black font-medium">
+                                    {document.jurisdiction_name}
+                                  </span>
+                                  <span className="text-sm text-gray-600">
+                                    {document.year}
                                   </span>
                                 </div>
-                              )}
-                              {document.version && (
-                                <span>Version: {document.version}</span>
-                              )}
+
+                                <h3 className="text-lg font-semibold text-black mb-2 group-hover:text-blue-600 transition-colors">
+                                  {document.title}
+                                </h3>
+
+                                <div className="flex items-center space-x-6 text-sm text-gray-600">
+                                  <div className="flex items-center space-x-2">
+                                    <BookOpen className="h-4 w-4" />
+                                    <span>{document.language_name}</span>
+                                  </div>
+                                  {document.effective_date && (
+                                    <div className="flex items-center space-x-2">
+                                      <span>
+                                        Effective:{" "}
+                                        {formatDate(document.effective_date)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {document.version && (
+                                    <span>Version: {document.version}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center space-x-4">
+                                <span
+                                  className={`text-xs px-2 py-1 rounded ${
+                                    document.processing_status === "completed"
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {document.processing_status}
+                                </span>
+                                <div className="w-2 h-2 bg-gray-300 rounded-full group-hover:bg-black transition-colors"></div>
+                              </div>
                             </div>
                           </div>
-
-                          <div className="flex items-center space-x-4">
-                            <span
-                              className={`text-xs px-2 py-1 rounded ${
-                                document.processing_status === "completed"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
-                            >
-                              {document.processing_status}
-                            </span>
-                            <div className="w-2 h-2 bg-gray-300 rounded-full group-hover:bg-black transition-colors"></div>
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
