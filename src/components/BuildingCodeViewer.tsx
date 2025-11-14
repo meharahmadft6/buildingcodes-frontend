@@ -10,12 +10,11 @@ import {
   X,
   ExternalLink,
 } from "lucide-react";
-import { BuildingCodeItem, HierarchyNode } from "@/types/buildingCode";
+import { HierarchyNode } from "@/types/buildingCode";
 import {
   buildingCodeService,
   buildHierarchy,
 } from "@/services/buildingCodeService";
-import { libraryService } from "@/services/libraryService";
 
 interface Reference {
   id: number;
@@ -69,34 +68,44 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       setLoading(true);
       setError(null);
 
-      let flatData: BuildingCodeItem[];
-
       if (documentId) {
-        // Fetch content for specific document
-        const contentData = await libraryService.getPdfDocumentContent(
+        // Fetch content for specific document using the correct service
+        const contentData = await buildingCodeService.getDocumentContent(
           documentId
         );
-        flatData = contentData.content;
+        setData(contentData.content);
+
+        // Auto-expand all items by default
+        const allIds = new Set<number>();
+        const collectIds = (nodes: HierarchyNode[]) => {
+          nodes.forEach((node) => {
+            allIds.add(node.id);
+            if (node.children) {
+              collectIds(node.children);
+            }
+          });
+        };
+        collectIds(contentData.content);
+        setExpandedItems(allIds);
       } else {
         // Fallback to original behavior (all content)
-        flatData = await buildingCodeService.getHierarchy();
+        const flatData = await buildingCodeService.getHierarchy();
+        const hierarchicalData = buildHierarchy(flatData);
+        setData(hierarchicalData);
+
+        // Auto-expand all items by default
+        const allIds = new Set<number>();
+        const collectIds = (nodes: HierarchyNode[]) => {
+          nodes.forEach((node) => {
+            allIds.add(node.id);
+            if (node.children) {
+              collectIds(node.children);
+            }
+          });
+        };
+        collectIds(hierarchicalData);
+        setExpandedItems(allIds);
       }
-
-      const hierarchicalData = buildHierarchy(flatData);
-      setData(hierarchicalData);
-
-      // Auto-expand all items by default
-      const allIds = new Set<number>();
-      const collectIds = (nodes: HierarchyNode[]) => {
-        nodes.forEach((node) => {
-          allIds.add(node.id);
-          if (node.children) {
-            collectIds(node.children);
-          }
-        });
-      };
-      collectIds(hierarchicalData);
-      setExpandedItems(allIds);
     } catch (err) {
       setError(
         "Failed to load building code data. Please ensure the backend server is running."
@@ -106,7 +115,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       setLoading(false);
     }
   };
-
   // Function to highlight references in text with purple color
   const highlightReferences = (text: string, references: Reference[] = []) => {
     if (!text || references.length === 0) {
@@ -578,11 +586,21 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
           <div className="flex items-start gap-2">
             <div className="flex-1">
               {/* Sentence content with reference highlights */}
-              {item.content_text && (
+              {(item.reference_code || item.content_text) && (
                 <div className="text-gray-700 leading-relaxed">
-                  {searchTerm
-                    ? highlightText(item.content_text, searchTerm)
-                    : highlightReferences(item.content_text, references)}
+                  <div className="flex flex-wrap items-start gap-2">
+                    {/* Reference Code */}
+                    {item.reference_code && <span>{item.reference_code}</span>}
+
+                    {/* Sentence Text */}
+                    {item.content_text && (
+                      <span className="break-words flex-1">
+                        {searchTerm
+                          ? highlightText(item.content_text, searchTerm)
+                          : highlightReferences(item.content_text, references)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
 

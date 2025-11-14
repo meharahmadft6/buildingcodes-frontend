@@ -24,6 +24,29 @@ class ApiService {
     }
   }
 
+  // Convert camelCase to snake_case for search results
+  private convertSearchResults(results: any[]): any[] {
+    return results.map((result) => ({
+      id: result.id,
+      parent_id: result.parentId,
+      content_type: result.contentType,
+      page_number: result.pageNumber,
+      reference_code: result.referenceCode,
+      title: result.title,
+      content_text: result.contentText,
+      sequence_order: result.sequenceOrder,
+      pdf_document_id: result.pdfDocumentId,
+      font_family: result.fontFamily,
+      font_size: result.fontSize,
+      bbox: result.bbox,
+      y_coordinate: result.yCoordinate,
+      document_title: result.document_title,
+      jurisdiction_name: result.jurisdiction_name,
+      document_type_name: result.document_type_name,
+      year: result.year,
+    }));
+  }
+
   async getJurisdictions() {
     return this.fetchWithErrorHandling(`${API_BASE_URL}/jurisdictions`);
   }
@@ -49,6 +72,7 @@ class ApiService {
       `${API_BASE_URL}/pdf-documents/${id}/content`
     );
   }
+
   async searchContent(
     query: string,
     documentId?: string,
@@ -65,7 +89,15 @@ class ApiService {
       params.append("documentId", documentId);
     }
 
-    return this.fetchWithErrorHandling(`${API_BASE_URL}/search?${params}`);
+    const response = await this.fetchWithErrorHandling(
+      `${API_BASE_URL}/search?${params}`
+    );
+
+    // Convert the results to snake_case for frontend compatibility
+    return {
+      ...response,
+      results: this.convertSearchResults(response.results),
+    };
   }
 }
 

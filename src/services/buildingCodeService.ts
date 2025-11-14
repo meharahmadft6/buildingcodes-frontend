@@ -1,5 +1,8 @@
-// src/services/buildingCodeService.ts
-import { BuildingCodeItem, HierarchyNode } from "@/types/buildingCode";
+import {
+  BuildingCodeItem,
+  HierarchyNode,
+  DocumentContentResponse,
+} from "@/types/buildingCode";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -8,6 +11,18 @@ export const buildingCodeService = {
     const response = await fetch(`${API_BASE_URL}/building-code/hierarchy`);
     if (!response.ok) {
       throw new Error("Failed to fetch hierarchy");
+    }
+    return response.json();
+  },
+
+  async getDocumentContent(
+    documentId: string
+  ): Promise<DocumentContentResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/pdf-documents/${documentId}/content`
+    );
+    if (!response.ok) {
+      throw new Error("Failed to fetch document content");
     }
     return response.json();
   },
