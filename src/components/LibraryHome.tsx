@@ -483,26 +483,49 @@ const LibraryHome: React.FC = () => {
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-6 py-4">
         <div className=" py-3  mx-auto">
-          <div className="relative ">
+          <div className="relative">
             <input
               type="text"
               placeholder="Search across all documents..."
-              className="w-full pl-4 pr-12 py-3 border border-gray-300 rounded-lg   text-black bg-white"
+              className="w-full pl-4 pr-20 py-3 border border-gray-300 rounded-lg text-black bg-white" // Increased right padding to pr-20
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={handleSearchKeyPress}
             />
-            <button
-              onClick={handleSearchButtonClick}
-              disabled={isSearching}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-black transition-colors disabled:opacity-50"
-            >
-              {isSearching ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Search className="h-5 w-5" />
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-2">
+              {searchQuery && (
+                <button
+                  onClick={handleClearSearch}
+                  className="text-gray-400 hover:text-black transition-colors"
+                  aria-label="Clear search"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
               )}
-            </button>
+              <button
+                onClick={handleSearchButtonClick}
+                disabled={isSearching}
+                className="text-gray-400 hover:text-black transition-colors disabled:opacity-50"
+              >
+                {isSearching ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Search className="h-5 w-5" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
         <div className="flex flex-col lg:flex-row gap-8">
@@ -537,7 +560,7 @@ const LibraryHome: React.FC = () => {
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => setSelectedJurisdiction("all")}
-                        className={`px-3 py-2 rounded-full text-sm font-medium transition-all border ${
+                        className={`px-3 py-2 rounded-full text-sm font-medium transition-all border cursor-pointer ${
                           selectedJurisdiction === "all"
                             ? "bg-black text-white border-black"
                             : "bg-white text-black border-gray-300 hover:border-black"
@@ -545,6 +568,7 @@ const LibraryHome: React.FC = () => {
                       >
                         All
                       </button>
+
                       {jurisdictions
                         .filter((j) => j.name !== "All")
                         .map((jurisdiction) => (
@@ -553,7 +577,7 @@ const LibraryHome: React.FC = () => {
                             onClick={() =>
                               setSelectedJurisdiction(jurisdiction.code)
                             }
-                            className={`px-3 py-2 rounded-full text-sm font-medium transition-all border ${
+                            className={`px-3 py-2 rounded-full text-sm font-medium transition-all border cursor-pointer ${
                               selectedJurisdiction === jurisdiction.code
                                 ? "bg-black text-white border-black"
                                 : "bg-white text-black border-gray-300 hover:border-black"
@@ -590,7 +614,7 @@ const LibraryHome: React.FC = () => {
                         <button
                           key={type.id}
                           onClick={() => toggleDocumentType(type.name)}
-                          className={`px-3 py-2 rounded-full text-sm font-medium transition-all border ${
+                          className={`px-3 py-2 rounded-full text-sm font-medium transition-all border cursor-pointer ${
                             selectedDocumentTypes.has(type.name)
                               ? "bg-black text-white border-black"
                               : "bg-white text-black border-gray-300 hover:border-black"
@@ -627,7 +651,7 @@ const LibraryHome: React.FC = () => {
                         <button
                           key={language.id}
                           onClick={() => toggleLanguage(language.name)}
-                          className={`px-3 py-2 rounded-full text-sm font-medium transition-all border ${
+                          className={`px-3 py-2 rounded-full text-sm font-medium transition-all border cursor-pointer ${
                             selectedLanguages.has(language.name)
                               ? "bg-black text-white border-black"
                               : "bg-white text-black border-gray-300 hover:border-black"
@@ -731,15 +755,16 @@ const LibraryHome: React.FC = () => {
                                           {/* Article Header */}
                                           <div className="flex items-start justify-between mb-3">
                                             <div className="flex-1 ">
-                                              <div className="flex items-center space-x-2 mb-2  text-blue-500  text-lg font-semibold ">
+                                              <div className="flex items-start space-x-2 mb-1 text-blue-500 text-lg font-semibold">
                                                 {headerItem.reference_code && (
-                                                  <span className="">
+                                                  <span className="leading-tight">
                                                     {headerItem.reference_code}
                                                   </span>
                                                 )}
+
                                                 {headerItem.title &&
                                                   headerItem.title.trim() && (
-                                                    <span className="underline ">
+                                                    <span className="underline leading-snug">
                                                       {highlightText(
                                                         headerItem.title,
                                                         searchQuery

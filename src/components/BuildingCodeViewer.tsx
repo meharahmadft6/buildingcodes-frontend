@@ -15,6 +15,7 @@ import {
   buildingCodeService,
   buildHierarchy,
 } from "@/services/buildingCodeService";
+import { useSearchParams } from "next/navigation";
 
 interface Reference {
   id: number;
@@ -53,6 +54,16 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
   const [hoveredItem, setHoveredItem] = useState<number | null>(null);
   const contentRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const contentContainerRef = useRef<HTMLDivElement>(null);
+  const [navigationExpandedItems, setNavigationExpandedItems] = useState<
+    Set<number>
+  >(new Set());
+  const [contentExpandedItems, setContentExpandedItems] = useState<Set<number>>(
+    new Set()
+  );
+
+  // Add this hook to get URL search params
+  const params = useSearchParams();
+  const highlightParam = params.get("highlight");
 
   // Check if we're in search mode
   const isSearchMode = useMemo(() => {
@@ -63,48 +74,85 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
     fetchData();
   }, [documentId]);
 
+  // Add this useEffect to handle highlight parameter after data is loaded
+  useEffect(() => {
+    if (data.length > 0 && highlightParam) {
+      const highlightId = parseInt(highlightParam);
+      if (!isNaN(highlightId)) {
+        // Small delay to ensure the DOM is fully rendered
+        setTimeout(() => {
+          navigateToItem(highlightId);
+        }, 500);
+      }
+    }
+  }, [data, highlightParam]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
 
       if (documentId) {
-        // Fetch content for specific document using the correct service
         const contentData = await buildingCodeService.getDocumentContent(
           documentId
         );
         setData(contentData.content);
 
-        // Auto-expand all items by default
-        const allIds = new Set<number>();
-        const collectIds = (nodes: HierarchyNode[]) => {
+        // Auto-expand ALL items in CONTENT
+        const allContentIds = new Set<number>();
+        const collectAllIds = (nodes: HierarchyNode[]) => {
           nodes.forEach((node) => {
-            allIds.add(node.id);
+            allContentIds.add(node.id);
             if (node.children) {
-              collectIds(node.children);
+              collectAllIds(node.children);
             }
           });
         };
-        collectIds(contentData.content);
-        setExpandedItems(allIds);
+        collectAllIds(contentData.content);
+        setContentExpandedItems(allContentIds);
+
+        // Navigation starts with ALL items expanded
+        const allNavigationIds = new Set<number>();
+        const collectNavigationIds = (nodes: HierarchyNode[]) => {
+          nodes.forEach((node) => {
+            allNavigationIds.add(node.id);
+            if (node.children) {
+              collectNavigationIds(node.children);
+            }
+          });
+        };
+        collectNavigationIds(contentData.content);
+        setNavigationExpandedItems(allNavigationIds);
       } else {
-        // Fallback to original behavior (all content)
         const flatData = await buildingCodeService.getHierarchy();
         const hierarchicalData = buildHierarchy(flatData);
         setData(hierarchicalData);
 
-        // Auto-expand all items by default
-        const allIds = new Set<number>();
-        const collectIds = (nodes: HierarchyNode[]) => {
+        // Auto-expand ALL items in CONTENT
+        const allContentIds = new Set<number>();
+        const collectAllIds = (nodes: HierarchyNode[]) => {
           nodes.forEach((node) => {
-            allIds.add(node.id);
+            allContentIds.add(node.id);
             if (node.children) {
-              collectIds(node.children);
+              collectAllIds(node.children);
             }
           });
         };
-        collectIds(hierarchicalData);
-        setExpandedItems(allIds);
+        collectAllIds(hierarchicalData);
+        setContentExpandedItems(allContentIds);
+
+        // Navigation starts with ALL items expanded
+        const allNavigationIds = new Set<number>();
+        const collectNavigationIds = (nodes: HierarchyNode[]) => {
+          nodes.forEach((node) => {
+            allNavigationIds.add(node.id);
+            if (node.children) {
+              collectNavigationIds(node.children);
+            }
+          });
+        };
+        collectNavigationIds(hierarchicalData);
+        setNavigationExpandedItems(allNavigationIds);
       }
     } catch (err) {
       setError(
@@ -115,6 +163,33 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       setLoading(false);
     }
   };
+
+  const toggleNavigationExpand = (id: number, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    const newExpanded = new Set(navigationExpandedItems);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setNavigationExpandedItems(newExpanded);
+  };
+
+  const toggleContentExpand = (id: number, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    const newExpanded = new Set(contentExpandedItems);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setContentExpandedItems(newExpanded);
+  };
+
   // Function to highlight references in text with purple color
   const highlightReferences = (text: string, references: Reference[] = []) => {
     if (!text || references.length === 0) {
@@ -234,66 +309,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
     setSearchResults(results);
   };
 
-  const navigateToItem = (id: number) => {
-    setSelectedItem(id);
-
-    // Expand all parent nodes to ensure the item is visible
-    const expandParents = (
-      nodes: HierarchyNode[],
-      targetId: number,
-      parents: number[] = []
-    ): boolean => {
-      for (const node of nodes) {
-        if (node.id === targetId) {
-          const newExpanded = new Set(expandedItems);
-          parents.forEach((p) => newExpanded.add(p));
-          setExpandedItems(newExpanded);
-          return true;
-        }
-        if (node.children) {
-          if (expandParents(node.children, targetId, [...parents, node.id])) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    expandParents(data, id);
-
-    // Scroll to item with a slight delay to ensure DOM is updated
-    setTimeout(() => {
-      const element = contentRefs.current[id];
-      if (element && contentContainerRef.current) {
-        // Get the content container
-        const container = contentContainerRef.current;
-
-        // Calculate positions relative to the container
-        const containerRect = container.getBoundingClientRect();
-        const elementRect = element.getBoundingClientRect();
-
-        // Calculate scroll position
-        const scrollPosition =
-          container.scrollTop + (elementRect.top - containerRect.top) - 20; // 20px offset
-
-        container.scrollTo({
-          top: scrollPosition,
-          behavior: "smooth",
-        });
-
-        // Add temporary highlight
-        element.style.transition = "all 0.3s ease";
-        element.style.backgroundColor = "#fef3c7";
-
-        setTimeout(() => {
-          element.style.backgroundColor = "";
-        }, 2000);
-      } else if (!element) {
-        console.warn(`Element with id ${id} not found in contentRefs`);
-      }
-    }, 200);
-  };
-
   const highlightText = (text: string, highlight: string) => {
     if (!highlight || !text) return text;
 
@@ -357,13 +372,12 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
   };
 
   const renderNavigationItem = (item: HierarchyNode, level: number = 0) => {
-    // Skip if this item type shouldn't be shown in navigation
     if (!shouldShowInNavigation(item)) {
       return null;
     }
 
     const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = expandedItems.has(item.id);
+    const isExpanded = navigationExpandedItems.has(item.id); // Use navigation state
     const isSelected = selectedItem === item.id;
 
     return (
@@ -385,8 +399,8 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
         >
           {hasChildren && (
             <div
-              className=" flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
-              onClick={(e) => toggleExpand(item.id, e)}
+              className="flex-shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
+              onClick={(e) => toggleNavigationExpand(item.id, e)} // Use navigation toggle
             >
               <ChevronRight
                 size={14}
@@ -411,7 +425,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
                 }
               >
                 {item.title || item.content_text?.substring(0, 50)}
-                {/* Show both title and content_text for division, part, section */}
                 {(item.content_type === "division" ||
                   item.content_type === "part" ||
                   item.content_type === "section") &&
@@ -438,22 +451,21 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
     );
   };
 
+  // Update renderContentItem to use contentExpandedItems
   const renderContentItem = (item: HierarchyNode, level: number = 0) => {
     const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = expandedItems.has(item.id);
+    const isExpanded = contentExpandedItems.has(item.id); // Use content state
     const isHighlighted = selectedItem === item.id;
     const isHovered = hoveredItem === item.id;
     const typeStyles = getTypeStyles(item.content_type);
     const references: Reference[] = (item as any).references || [];
 
-    // Only show highlight for article-level items, not their children
     const showHighlight =
       isHighlighted &&
       ["division", "part", "section", "subsection", "article"].includes(
         item.content_type
       );
 
-    // For articles, render as a complete box containing all children
     if (item.content_type === "article") {
       return (
         <div key={item.id} className="mb-6">
@@ -461,11 +473,11 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
             ref={(el) => {
               contentRefs.current[item.id] = el;
             }}
-            className={`transition-all duration-200 p-4 rounded-lg  ${
+            className={` p-4 rounded-lg  ${
               showHighlight
                 ? "bg-blue-50 border-blue-300 shadow-sm"
                 : isHovered
-                ? "bg-gray-50 border-gray-300 shadow-sm"
+                ? "bg-gray-200 border-gray-300 shadow-sm"
                 : "bg-white "
             }`}
             onMouseEnter={() => setHoveredItem(item.id)}
@@ -479,7 +491,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
                     {item.reference_code}
                   </span>
                 )}
-
                 {item.title && (
                   <h3 className={`${typeStyles.text}`}>
                     {searchTerm
@@ -490,7 +501,7 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
               </div>
             )}
 
-            {/* Render all sentences as separate blocks within the article */}
+            {/* Always show children in content - no expansion check needed */}
             {hasChildren && (
               <div className="space-y-3">
                 {item.children!.map((child) => renderArticleChild(child))}
@@ -501,18 +512,17 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
       );
     }
 
-    // Regular block rendering for division, part, section, subsection
     return (
       <div key={item.id} className="mb-6">
         <div
           ref={(el) => {
             contentRefs.current[item.id] = el;
           }}
-          className={`transition-all duration-200 p-4 rounded-lg  ${
+          className={` p-4 rounded-lg  ${
             showHighlight
               ? "bg-blue-50 border-blue-300 shadow-sm"
               : isHovered
-              ? "bg-gray-50 border-gray-300 shadow-sm"
+              ? "bg-gray-200 border-gray-300 shadow-sm"
               : "bg-white "
           }`}
           onMouseEnter={() => setHoveredItem(item.id)}
@@ -526,7 +536,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
                   {item.reference_code}
                 </span>
               )}
-
               {item.title && (
                 <h3 className={`${typeStyles.text}`}>
                   {searchTerm
@@ -534,7 +543,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
                     : item.title}
                 </h3>
               )}
-
               {item.content_text && item.content_text !== item.title && (
                 <span className={`${typeStyles.text}`}>
                   {searchTerm
@@ -546,14 +554,68 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
           )}
         </div>
 
-        {/* Render children outside the box for non-article items */}
-        {hasChildren && isExpanded && item.content_type !== "article" && (
-          <div className=" ml-4">
+        {/* Always show children in content - remove expansion check */}
+        {hasChildren && item.content_type !== "article" && (
+          <div className="ml-4">
             {item.children!.map((child) => renderContentItem(child, level + 1))}
           </div>
         )}
       </div>
     );
+  };
+
+  // Update navigateToItem to use contentExpandedItems
+  const navigateToItem = (id: number) => {
+    setSelectedItem(id);
+
+    // Expand all parent nodes in CONTENT to ensure the item is visible
+    const expandParents = (
+      nodes: HierarchyNode[],
+      targetId: number,
+      parents: number[] = []
+    ): boolean => {
+      for (const node of nodes) {
+        if (node.id === targetId) {
+          const newExpanded = new Set(contentExpandedItems);
+          parents.forEach((p) => newExpanded.add(p));
+          setContentExpandedItems(newExpanded);
+          return true;
+        }
+        if (node.children) {
+          if (expandParents(node.children, targetId, [...parents, node.id])) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    expandParents(data, id);
+
+    // Scroll logic remains the same...
+    setTimeout(() => {
+      const element = contentRefs.current[id];
+      if (element && contentContainerRef.current) {
+        const container = contentContainerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+        const scrollPosition =
+          container.scrollTop + (elementRect.top - containerRect.top) - 20;
+
+        container.scrollTo({
+          top: scrollPosition,
+          behavior: "smooth",
+        });
+
+        element.style.transition = "all 0.3s ease";
+
+        setTimeout(() => {
+          element.style.backgroundColor = "";
+        }, 2000);
+      } else if (!element) {
+        console.warn(`Element with id ${id} not found in contentRefs`);
+      }
+    }, 200);
   };
 
   // Helper function to render children within an article
@@ -572,12 +634,12 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
           ref={(el) => {
             contentRefs.current[item.id] = el;
           }}
-          className={`p-3 border rounded transition-all duration-200 ${
+          className={`p-3  rounded  ${
             isHighlighted
-              ? "bg-yellow-50 border-yellow-300 shadow-sm"
+              ? "bg-blue-50 border-blue-300 shadow-sm"
               : isHovered
-              ? "bg-gray-50 border-gray-300"
-              : "bg-gray-50 border-gray-200"
+              ? "bg-gray-200 border-gray-300"
+              : "bg-white"
           }`}
           onMouseEnter={() => setHoveredItem(item.id)}
           onMouseLeave={() => setHoveredItem(null)}
@@ -620,14 +682,7 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
                   toggleExpand(item.id);
                 }}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors font-medium flex-shrink-0"
-              >
-                <ChevronRight
-                  size={12}
-                  className={`transition-transform ${
-                    isExpanded ? "transform rotate-90" : ""
-                  }`}
-                />
-              </button>
+              ></button>
             )}
           </div>
         </div>
@@ -670,8 +725,12 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
           ref={(el) => {
             contentRefs.current[item.id] = el;
           }}
-          className={`ml-4 p-2 rounded transition-colors ${
-            isHighlighted ? "bg-yellow-50" : isHovered ? "bg-gray-50" : ""
+          className={`ml-4 p-2 rounded  ${
+            isHighlighted
+              ? "bg-blue-50"
+              : isHovered
+              ? "bg-gray-100 border border-black"
+              : ""
           }`}
           onMouseEnter={() => setHoveredItem(item.id)}
           onMouseLeave={() => setHoveredItem(null)}
@@ -711,7 +770,11 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
             contentRefs.current[item.id] = el;
           }}
           className={`ml-4 p-1 rounded transition-colors ${
-            isHighlighted ? "bg-yellow-50" : isHovered ? "bg-gray-50" : ""
+            isHighlighted
+              ? "bg-blue-50"
+              : isHovered
+              ? "bg-gray-100 border border-black"
+              : ""
           }`}
           onMouseEnter={() => setHoveredItem(item.id)}
           onMouseLeave={() => setHoveredItem(null)}
@@ -740,8 +803,6 @@ const BuildingCodeViewer: React.FC<BuildingCodeViewerProps> = ({
 
     return null;
   };
-  // Rest of the component remains the same...
-  // [Previous code for search results, navigation, etc.]
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
